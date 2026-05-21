@@ -1,15 +1,19 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --border-radius-lg: 12px;
-  --border-radius-md: 8px;
-  --color-background-primary: #ffffff;
-  --color-background-secondary: #f0f2f5;
-  --color-border-tertiary: #e8eaed;
-  --color-border-secondary: #d0d4da;
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #5f6368;
-  --color-text-tertiary: #80868b;
+  --wii-bg: #c5cad3;
+  --wii-bg-deep: #a8b0bc;
+  --wii-surface: #e8ecf2;
+  --wii-surface-top: #fafcfe;
+  --wii-surface-bot: #d4dae4;
+  --wii-text: #4a5568;
+  --wii-text-muted: #6b7585;
+  --wii-glow: rgba(140, 190, 240, 0.55);
+  --wii-glow-strong: rgba(120, 175, 235, 0.75);
+  --wii-border-soft: rgba(255, 255, 255, 0.85);
+  --wii-shadow: rgba(90, 110, 140, 0.28);
+  --wii-radius-pill: 999px;
+  --wii-radius-md: 14px;
+  --wii-radius-lg: 22px;
+  --wii-font: "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
 }
 
 html,
@@ -20,9 +24,9 @@ body {
 
 body {
   min-height: 100vh;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--wii-text);
+  background: radial-gradient(ellipse 120% 80% at 50% 0%, #dce4ee 0%, #b8c2d0 55%, #a0aab8 100%);
+  font-family: var(--wii-font);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -33,7 +37,7 @@ body {
 }
 
 main {
-  padding: 12px 24px 32px;
-  max-width: 1440px;
+  padding: 20px 24px 40px;
+  max-width: 1280px;
   margin: 0 auto;
 }

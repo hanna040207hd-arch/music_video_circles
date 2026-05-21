@@ -1,17 +1,247 @@
+/* Wii Menu–style: soft pill buttons, blue glow, skeuomorphic gradients */
+
 .root {
-  background: #fff;
-  border-radius: var(--border-radius-lg);
+  background: linear-gradient(180deg, #eef2f8 0%, #d8dee8 100%);
+  border-radius: var(--wii-radius-lg);
   overflow: hidden;
   position: relative;
   user-select: none;
-  max-width: 1400px;
+  max-width: 1200px;
   width: 100%;
-  margin: 24px auto;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  margin: 0 auto;
+  border: none;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset,
+    0 8px 28px var(--wii-shadow),
+    0 0 40px rgba(150, 190, 235, 0.15);
+}
+
+.videoToolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, #e4eaf2 0%, #cdd5e0 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.videoUpload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wii-text);
+  border-radius: var(--wii-radius-pill);
+  border: none;
+  background: linear-gradient(180deg, var(--wii-surface-top) 0%, var(--wii-surface-bot) 100%);
+  cursor: pointer;
+  box-shadow:
+    0 0 0 3px var(--wii-glow),
+    0 2px 0 var(--wii-border-soft) inset,
+    0 4px 14px var(--wii-shadow);
+  transition: box-shadow 0.15s, transform 0.1s;
+}
+
+.videoUpload:hover {
+  box-shadow:
+    0 0 0 4px var(--wii-glow-strong),
+    0 2px 0 #fff inset,
+    0 6px 18px var(--wii-shadow);
+}
+
+.videoUpload:active {
+  transform: scale(0.98);
+  box-shadow:
+    0 0 0 2px var(--wii-glow),
+    inset 0 3px 8px rgba(100, 120, 150, 0.2);
+}
+
+.videoUpload input {
+  display: none;
+}
+
+.videoName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wii-text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--wii-text-muted);
+  padding: 6px 12px;
+  border-radius: var(--wii-radius-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(210, 218, 230, 0.65) 100%);
+  box-shadow: 0 0 0 2px rgba(160, 200, 240, 0.35);
+}
+
+.fxRow input[type="range"] {
+  width: 80px;
+  accent-color: #7eb8e8;
+}
+
+.fxRow input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #7eb8e8;
+}
+
+.fxColor {
+  width: 32px;
+  height: 26px;
+  padding: 2px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: linear-gradient(180deg, #fff 0%, #d0d8e4 100%);
+  box-shadow: 0 0 0 2px rgba(160, 200, 240, 0.45);
+}
+
+.fxPresetsWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: var(--wii-radius-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(200, 210, 225, 0.5) 100%);
+  box-shadow: 0 0 0 2px rgba(160, 200, 240, 0.3);
+}
+
+.fxPresets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fxSaveSlot {
+  font-size: 11px;
+  font-weight: 600;
+  min-height: 28px;
+  padding: 0 14px;
+  border-radius: var(--wii-radius-pill);
+  border: none;
+  background: linear-gradient(180deg, #fafcfe 0%, #d0d8e6 100%);
+  color: var(--wii-text);
+  cursor: pointer;
+  box-shadow:
+    0 0 0 2px var(--wii-glow),
+    0 1px 0 #fff inset,
+    0 2px 8px var(--wii-shadow);
+}
+
+.fxSaveSlot:hover {
+  box-shadow:
+    0 0 0 3px var(--wii-glow-strong),
+    0 1px 0 #fff inset,
+    0 4px 12px var(--wii-shadow);
+}
+
+.fxPresetBtn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.8),
+    0 2px 6px rgba(80, 100, 130, 0.25);
+  transition: transform 0.12s;
+}
+
+.fxPresetBtn:hover {
+  transform: scale(1.1);
+}
+
+.fxPresetBtnSelected {
+  outline: none;
+  box-shadow:
+    0 0 0 3px var(--wii-glow-strong),
+    0 0 10px rgba(120, 180, 240, 0.5);
+}
+
+.textToolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 18px;
+  background: linear-gradient(180deg, #e8edf4 0%, #d6dee8 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.textToolbarLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wii-text-muted);
+}
+
+.textArea {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 14px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  font-family: "Arial Black", Impact, "Helvetica Neue", Arial, sans-serif;
+  color: var(--wii-text);
+  border: none;
+  border-radius: var(--wii-radius-md);
+  resize: vertical;
+  background: linear-gradient(180deg, #fff 0%, #e8edf4 100%);
+  box-shadow:
+    0 0 0 2px rgba(160, 200, 240, 0.4),
+    inset 0 1px 3px rgba(100, 120, 150, 0.08);
+}
+
+.textArea:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 3px var(--wii-glow-strong),
+    inset 0 1px 3px rgba(100, 120, 150, 0.08);
+}
+
+.textHint {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--wii-text-muted);
+  align-self: center;
+  padding: 8px 12px;
+  border-radius: var(--wii-radius-pill);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
 }
 
 .canvasWrap {
   position: relative;
+  flex-shrink: 0;
+  line-height: 0;
+  background: linear-gradient(180deg, #f4f7fb 0%, #e8edf4 100%);
+  box-shadow: inset 0 2px 12px rgba(100, 120, 150, 0.08);
 }
 
 .canvas {
@@ -23,171 +253,230 @@
 
 .drawHint {
   position: absolute;
-  top: 10px;
-  left: 12px;
+  top: 12px;
+  left: 14px;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  font-weight: 500;
+  color: var(--wii-text-muted);
   pointer-events: none;
-  background: rgba(255, 255, 255, 0.75);
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 8px 16px;
+  border-radius: var(--wii-radius-pill);
+  border: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(220, 228, 240, 0.92) 100%);
+  box-shadow:
+    0 0 0 2px var(--wii-glow),
+    0 2px 8px var(--wii-shadow);
 }
 
 .hud {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: rgba(255, 255, 255, 0.92);
-  border-top: 0.5px solid rgba(0, 0, 0, 0.08);
-  padding: 8px 14px;
+  position: relative;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #e8edf4 0%, #d4dce8 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  padding: 12px 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .keyGroup {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .kkey {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1.5px solid rgba(0, 0, 0, 0.12);
-  background: #f5f5f5;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(180deg, #fafcfe 0%, #d2dae6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  font-weight: 500;
-  color: #333;
-  transition: all 0.08s;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--wii-text);
+  transition: transform 0.08s, box-shadow 0.12s;
   flex-shrink: 0;
   cursor: pointer;
   padding: 0;
+  box-shadow:
+    0 0 0 2px rgba(160, 200, 240, 0.4),
+    0 2px 0 #fff inset,
+    0 3px 8px var(--wii-shadow);
+}
+
+.kkey:hover {
+  box-shadow:
+    0 0 0 3px var(--wii-glow),
+    0 2px 0 #fff inset,
+    0 4px 12px var(--wii-shadow);
 }
 
 .kkeyActive {
-  transform: scale(0.85);
+  transform: scale(0.9);
+  color: #fff !important;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.5),
+    inset 0 3px 10px rgba(40, 50, 70, 0.35) !important;
 }
 
 .sep {
   width: 1px;
-  height: 20px;
-  background: rgba(0, 0, 0, 0.1);
+  height: 28px;
+  background: linear-gradient(180deg, transparent, rgba(120, 140, 170, 0.35), transparent);
 }
 
 .ctrlRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-left: auto;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .ctrlRow {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .bb2 {
-  border: 0.5px solid rgba(0, 0, 0, 0.15);
-  border-radius: 20px;
-  background: none;
-  font-size: 11px;
-  color: #555;
-  padding: 4px 12px;
+  border: none;
+  border-radius: var(--wii-radius-pill);
+  background: linear-gradient(180deg, #fafcfe 0%, #d0d8e6 100%);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wii-text);
+  min-height: 36px;
+  padding: 0 20px;
   cursor: pointer;
+  box-shadow:
+    0 0 0 3px var(--wii-glow),
+    0 2px 0 var(--wii-border-soft) inset,
+    0 4px 14px var(--wii-shadow);
+  transition: box-shadow 0.15s, transform 0.1s;
 }
 
 .bb2:hover {
-  background: #f0f0f0;
+  box-shadow:
+    0 0 0 4px var(--wii-glow-strong),
+    0 2px 0 #fff inset,
+    0 6px 18px var(--wii-shadow);
+}
+
+.bb2:active {
+  transform: scale(0.97);
+  box-shadow:
+    0 0 0 2px var(--wii-glow),
+    inset 0 3px 10px rgba(100, 120, 150, 0.25);
 }
 
 .bb2On {
-  background: #e2185a;
+  background: linear-gradient(180deg, #8eb8e0 0%, #5a94c8 100%);
   color: #fff;
-  border-color: #e2185a;
+  text-shadow: 0 1px 1px rgba(40, 70, 110, 0.4);
+  box-shadow:
+    0 0 0 3px rgba(100, 160, 220, 0.7),
+    0 1px 0 rgba(255, 255, 255, 0.35) inset,
+    inset 0 3px 8px rgba(40, 80, 130, 0.35);
 }
 
 .bpmRow {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: #888;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--wii-text-muted);
+  padding: 6px 14px;
+  border-radius: var(--wii-radius-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75) 0%, rgba(210, 218, 230, 0.7) 100%);
+  box-shadow: 0 0 0 2px rgba(160, 200, 240, 0.35);
 }
 
 .bpmRow input {
-  width: 70px;
-  accent-color: #e2185a;
+  width: 88px;
+  accent-color: #7eb8e8;
 }
 
 .seqPanel {
-  padding: 8px 14px 12px;
-  background: #fff;
-  border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+  padding: 14px 18px 18px;
+  background: linear-gradient(180deg, #e0e6f0 0%, #ccd4e0 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.45);
 }
 
 .seqRow {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   align-items: center;
   width: 100%;
-  padding-top: 4px;
+  padding-top: 8px;
+}
+
+.seqRow:first-child {
+  padding-top: 0;
 }
 
 .seqLabel {
-  font-size: 11px;
+  font-size: 12px;
   width: 36px;
   text-align: right;
   flex-shrink: 0;
-  font-weight: 500;
+  font-weight: 700;
+  color: var(--wii-text);
+}
+
+.trackColorPick {
+  width: 30px;
+  height: 28px;
+  padding: 2px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #fff 0%, #d4dce8 100%);
+  box-shadow:
+    0 0 0 2px rgba(160, 200, 240, 0.45),
+    inset 0 1px 3px rgba(80, 100, 130, 0.12);
 }
 
 .seqSteps {
   display: grid;
   grid-template-columns: repeat(16, 1fr);
-  gap: 2px;
+  gap: 4px;
   flex: 1;
 }
 
 .sq {
-  height: 26px;
-  border-radius: 2px;
-  background: #f0f2f5;
+  height: 28px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #c8d2e0 0%, #a8b4c4 100%);
   cursor: pointer;
-  border: 0.5px solid #e0e4ea;
-  transition: background 0.1s;
+  border: none;
+  transition: background 0.12s, box-shadow 0.12s, transform 0.08s;
   padding: 0;
+  box-shadow:
+    inset 0 2px 5px rgba(70, 90, 120, 0.2),
+    0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
-.sqOnKick {
-  background: #e2185a;
-  border-color: #e2185a;
-}
-
-.sqOnSnare {
-  background: #f57c00;
-  border-color: #f57c00;
-}
-
-.sqOnHihat {
-  background: #00897b;
-  border-color: #00897b;
-}
-
-.sqOnBass {
-  background: #6c3aba;
-  border-color: #6c3aba;
-}
-
-.sqOnPerc {
-  background: #1565c0;
-  border-color: #1565c0;
+.sq:hover {
+  background: linear-gradient(180deg, #d4dce8 0%, #b4c0d0 100%);
+  box-shadow:
+    0 0 0 2px rgba(160, 200, 240, 0.35),
+    inset 0 2px 4px rgba(70, 90, 120, 0.15);
 }
 
 .sqCur {
-  outline: 2px solid rgba(255, 255, 255, 0.85);
-  outline-offset: 1px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.95),
+    0 0 12px rgba(140, 190, 240, 0.65);
+  transform: scale(1.04);
 }

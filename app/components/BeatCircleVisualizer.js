@@ -1,10 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  defaultOverlayText,
+  drawOverlayText,
+  hitTestOverlayText,
+} from "../lib/overlayText";
+import {
+  buildFlourishFromStroke,
+  drawFlourish,
+  getFlourishEvolve,
+} from "../lib/pathFlourish";
+import {
+  createVideoWorkSurface,
+  drawIdleBackground,
+  drawVectorVideoBackground,
+} from "../lib/videoVectorFilter";
 import styles from "./BeatCircleVisualizer.module.css";
 
-const W = 1400;
-const H = 875;
+const W = 1200;
+const H = 750;
 const STEPS = 16;
 const MARGIN = 64;
 const SIZE_SCALE = Math.min(W / 680, H / 440);
@@ -12,7 +27,12 @@ const CIRCLE_SIZE_MIN = Math.round(28 * SIZE_SCALE);
 const CIRCLE_SIZE_MAX = Math.round(88 * SIZE_SCALE);
 const CIRCLE_SIZE_FLOOR = Math.round(16 * SIZE_SCALE);
 const CIRCLE_MIN_RADIUS = Math.round(14 * SIZE_SCALE);
-const CIRCLE_STACK_SHRINK = 3 * SIZE_SCALE;
+const CIRCLE_STACK_SHRINK = 5 * SIZE_SCALE;
+const MAX_CIRCLES_PER_SLOT = 4;
+const MAX_TOTAL_CIRCLES = 36;
+const MIN_SPAWN_GAP = 38 * SIZE_SCALE;
+const SPAWN_RETRY = 5;
+const MAX_PERSISTENT_PATHS = 24;
 
 const PALETTE = [
   { base: "#E8185A", light: "#FF80AB", mid: "#F06292", dark: "#AD1457" },
@@ -98,14 +118,6 @@ const SOUNDS = [
   { freq: 160, type: "sawtooth", decay: 0.3 },
 ];
 
-const SQ_ON_CLASS = {
-  kick: styles.sqOnKick,
-  snare: styles.sqOnSnare,
-  hihat: styles.sqOnHihat,
-  bass: styles.sqOnBass,
-  perc: styles.sqOnPerc,
-};
-
 function rand(a, b) {
   return a + Math.random() * (b - a);
 }
@@ -124,12 +136,115 @@ function normalizeHex(color) {
   return color.length === 7 ? color : "#ffffff";
 }
 
+const DEFAULT_BG_SLOTS = [
+  "#ffffff",
+  "#d4f5ef",
+  "#fff8e7",
+  "#e8e4ff",
+  "#ffe8f0",
+];
+const BG_SLOTS_STORAGE_KEY = "beat-circle-bg-slots";
+const BG_COLOR_STORAGE_KEY = "beat-circle-bg-current";
+
+function loadBgSlotsFromStorage() {
+  if (typeof window === "undefined") return DEFAULT_BG_SLOTS.slice();
+  try {
+    const raw = window.localStorage.getItem(BG_SLOTS_STORAGE_KEY);
+    if (!raw) return DEFAULT_BG_SLOTS.slice();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length < 1) {
+      return DEFAULT_BG_SLOTS.slice();
+    }
+    const slots = [];
+    for (let i = 0; i < 5; i++) {
+      slots.push(normalizeHex(parsed[i] || DEFAULT_BG_SLOTS[i]));
+    }
+    return slots;
+  } catch {
+    return DEFAULT_BG_SLOTS.slice();
+  }
+}
+
+function persistBgSlots(slots) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BG_SLOTS_STORAGE_KEY, JSON.stringify(slots));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+function loadBgColorFromStorage() {
+  if (typeof window === "undefined") return "#ffffff";
+  try {
+    const raw = window.localStorage.getItem(BG_COLOR_STORAGE_KEY);
+    return raw ? normalizeHex(raw) : "#ffffff";
+  } catch {
+    return "#ffffff";
+  }
+}
+
+function persistBgColor(hex) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BG_COLOR_STORAGE_KEY, normalizeHex(hex));
+  } catch {
+    /* ignore */
+  }
+}
+
 function withAlpha(color, alpha) {
   const hex = normalizeHex(color);
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function hexToRgb(hex) {
+  const h = normalizeHex(hex);
+  return {
+    r: parseInt(h.slice(1, 3), 16),
+    g: parseInt(h.slice(3, 5), 16),
+    b: parseInt(h.slice(5, 7), 16),
+  };
+}
+
+function rgbToHex(r, g, b) {
+  const c = (n) => Math.max(0, Math.min(255, Math.round(n)));
+  return (
+    "#" +
+    [c(r), c(g), c(b)].map((n) => n.toString(16).padStart(2, "0")).join("")
+  );
+}
+
+function randomPaletteAccent() {
+  const pal = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+  const tones = [pal.base, pal.mid, pal.light, pal.dark];
+  return normalizeHex(tones[Math.floor(Math.random() * tones.length)]);
+}
+
+function randomTintOfBase(baseHex) {
+  const { r, g, b } = hexToRgb(baseHex);
+  const mix = () => rand(-55, 55);
+  return rgbToHex(r + mix(), g + mix(), b + mix());
+}
+
+function defaultDrumColors() {
+  return DRUM_TRACK_KEYS.reduce((acc, id) => {
+    acc[id] = DRUM_TRACKS[id].color;
+    return acc;
+  }, {});
+}
+
+/** 지정 색 1개 + 링마다 무작위 보조 색 */
+function buildRingColorsFromBase(baseHex, ringCount) {
+  const base = normalizeHex(baseHex);
+  const colors = [base];
+  for (let i = 1; i < ringCount; i++) {
+    colors.push(Math.random() < 0.55 ? randomPaletteAccent() : randomTintOfBase(base));
+  }
+  return colors;
 }
 
 const MIN_POINT_DIST = 6;
@@ -188,29 +303,45 @@ function getSpawnOnPaths(paths, cursorRef) {
   };
 }
 
-function drawUserPaths(c, paths, activeStroke) {
-  c.lineCap = "round";
-  c.lineJoin = "round";
-
+/** 장식 선은 사라지지 않음 — 궤적(points) 유지, born만 초기화 */
+function updatePersistentPaths(paths, now) {
   paths.forEach((path) => {
-    const pts = path.points;
-    if (pts.length < 2) return;
-    c.beginPath();
-    c.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
-    c.strokeStyle = "rgba(40,40,40,0.22)";
-    c.lineWidth = 2.5;
-    c.stroke();
+    if (path.born == null) path.born = now;
+    path.alpha = 1;
+  });
+}
+
+function getSpawnPathList(paths, activeStroke) {
+  const list = paths.filter((p) => p.points && p.points.length >= 2);
+  if (activeStroke?.points?.length >= 2) {
+    list.push({ points: activeStroke.points });
+  }
+  return list;
+}
+
+function drawUserPaths(c, paths, activeStroke, now) {
+  paths.forEach((path) => {
+    if (!path.flourish) return;
+    const evolve = getFlourishEvolve(path, now);
+    try {
+      drawFlourish(c, path.flourish, evolve);
+    } catch {
+      /* skip broken flourish frame */
+    }
   });
 
   if (activeStroke && activeStroke.points.length >= 2) {
     const pts = activeStroke.points;
+    c.save();
+    c.setLineDash([6, 8]);
+    c.lineCap = "round";
     c.beginPath();
     c.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
-    c.strokeStyle = "rgba(226,24,90,0.55)";
-    c.lineWidth = 3;
+    c.strokeStyle = "rgba(155,27,111,0.28)";
+    c.lineWidth = 1.5;
     c.stroke();
+    c.restore();
   }
 }
 
@@ -302,7 +433,7 @@ class MCircle {
     this.centerR = size * rand(0.12, 0.22);
     this.drift = rand(0.3, 0.55);
     this.age = 0;
-    this.maxAge = 180 + Math.random() * 200;
+    this.maxAge = 140 + Math.random() * 120;
     this.alpha = 0;
     this.vx = rand(-1.8, 1.8);
     this.vy = rand(-1.4, 1.4);
@@ -332,7 +463,7 @@ class MCircle {
     this.pulse *= 0.88;
     const progress = this.age / this.maxAge;
     if (progress < 0.08) this.alpha = Math.max(0.2, progress / 0.08);
-    else if (progress > 0.72) this.alpha = 1 - (progress - 0.72) / 0.28;
+    else if (progress > 0.65) this.alpha = 1 - (progress - 0.65) / 0.35;
     else this.alpha = 1;
     this.x += this.vx * this.drift;
     this.y += this.vy * this.drift;
@@ -424,18 +555,8 @@ class Trail {
   }
 }
 
-function drawBg(c) {
-  c.fillStyle = "#fff";
-  c.fillRect(0, 0, W, H);
-  c.fillStyle = "rgba(200,220,200,.18)";
-  const gs = 18;
-  for (let x = gs / 2; x < W; x += gs) {
-    for (let y = gs / 2; y < H; y += gs) {
-      c.beginPath();
-      c.arc(x, y, 1.2, 0, Math.PI * 2);
-      c.fill();
-    }
-  }
+function drawBg(c, bgColor) {
+  drawIdleBackground(c, W, H, { bgColor });
 }
 
 export default function BeatCircleVisualizer() {
@@ -453,8 +574,83 @@ export default function BeatCircleVisualizer() {
   const activeStrokeRef = useRef(null);
   const pathCursorRef = useRef(0);
   const isDrawingRef = useRef(false);
+  const isDraggingTextRef = useRef(false);
+  const textDragOffsetRef = useRef({ x: 0, y: 0 });
+  const videoRef = useRef(null);
+  const workSurfaceRef = useRef(null);
+  const videoUrlRef = useRef(null);
 
   const [bpm, setBpm] = useState(120);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [videoLabel, setVideoLabel] = useState("");
+  const [videoReady, setVideoReady] = useState(false);
+  const [fxThreshold, setFxThreshold] = useState(120);
+  const [fxHalftone, setFxHalftone] = useState(true);
+  const [fxBgColor, setFxBgColor] = useState(() =>
+    typeof window !== "undefined" ? loadBgColorFromStorage() : "#ffffff"
+  );
+  const [bgSlots, setBgSlots] = useState(() =>
+    typeof window !== "undefined" ? loadBgSlotsFromStorage() : DEFAULT_BG_SLOTS
+  );
+  const [activeBgSlot, setActiveBgSlot] = useState(0);
+  const [overlayText, setOverlayText] = useState(() =>
+    defaultOverlayText(SIZE_SCALE)
+  );
+  const [isDraggingText, setIsDraggingText] = useState(false);
+  const overlayTextRef = useRef(overlayText);
+  const slotClickTimerRef = useRef(null);
+  const [drumColors, setDrumColors] = useState(defaultDrumColors);
+  const drumColorsRef = useRef(drumColors);
+
+  useEffect(() => {
+    overlayTextRef.current = overlayText;
+  }, [overlayText]);
+
+  useEffect(() => {
+    persistBgColor(fxBgColor);
+  }, [fxBgColor]);
+
+  const saveBgSlot = useCallback((index, color) => {
+    const hex = normalizeHex(color ?? fxBgColor);
+    setBgSlots((prev) => {
+      const next = prev.slice();
+      next[index] = hex;
+      persistBgSlots(next);
+      return next;
+    });
+    setActiveBgSlot(index);
+  }, [fxBgColor]);
+
+  const applyBgSlot = useCallback((hex, index) => {
+    setFxBgColor(normalizeHex(hex));
+    if (typeof index === "number") setActiveBgSlot(index);
+  }, []);
+
+  const handleSlotClick = useCallback(
+    (hex, index) => {
+      if (slotClickTimerRef.current) clearTimeout(slotClickTimerRef.current);
+      slotClickTimerRef.current = setTimeout(() => {
+        applyBgSlot(hex, index);
+        slotClickTimerRef.current = null;
+      }, 220);
+    },
+    [applyBgSlot]
+  );
+
+  const handleSlotDoubleClick = useCallback(
+    (index) => {
+      if (slotClickTimerRef.current) {
+        clearTimeout(slotClickTimerRef.current);
+        slotClickTimerRef.current = null;
+      }
+      saveBgSlot(index);
+    },
+    [saveBgSlot]
+  );
+
+  useEffect(() => {
+    drumColorsRef.current = drumColors;
+  }, [drumColors]);
   const [seqRunning, setSeqRunning] = useState(false);
   const [seqCurStep, setSeqCurStep] = useState(-1);
   const [drumPattern, setDrumPattern] = useState(emptyDrumPattern);
@@ -555,22 +751,77 @@ export default function BeatCircleVisualizer() {
     [getAC]
   );
 
-  const spawnCircle = useCallback((slotId, palIdx, sizeBoost = 0) => {
-    const onPath = getSpawnOnPaths(pathsRef.current, pathCursorRef);
-    const pos = onPath
-      ? { x: onPath.x, y: onPath.y }
-      : randomSpawnPos();
-    const tangent = onPath?.tangent;
+  const countActiveCircles = useCallback(() => {
+    return circlesRef.current.filter((cc) => !cc.done).length;
+  }, []);
+
+  const isTooCloseToOthers = useCallback((x, y, minGap) => {
+    for (const cc of circlesRef.current) {
+      if (cc.done) continue;
+      const d = Math.hypot(cc.x - x, cc.y - y);
+      if (d < minGap + cc.size * 0.22) return true;
+    }
+    return false;
+  }, []);
+
+  const pickSpawnPosition = useCallback(() => {
+    const spawnPaths = getSpawnPathList(
+      pathsRef.current,
+      activeStrokeRef.current
+    );
+
+    if (spawnPaths.length > 0) {
+      for (let attempt = 0; attempt < SPAWN_RETRY; attempt++) {
+        const onPath = getSpawnOnPaths(spawnPaths, pathCursorRef);
+        if (!onPath) break;
+        const pos = { x: onPath.x, y: onPath.y, tangent: onPath.tangent };
+        if (!isTooCloseToOthers(pos.x, pos.y, MIN_SPAWN_GAP)) {
+          return pos;
+        }
+        if (attempt >= 2) {
+          pos.x += rand(-24, 24);
+          pos.y += rand(-20, 20);
+          return pos;
+        }
+      }
+      const onPath = getSpawnOnPaths(spawnPaths, pathCursorRef);
+      if (onPath) {
+        return { x: onPath.x, y: onPath.y, tangent: onPath.tangent };
+      }
+    }
+
+    const pos = randomSpawnPos();
+    return { ...pos, tangent: null };
+  }, [isTooCloseToOthers]);
+
+  const setDrumColor = useCallback((trackId, hex) => {
+    const next = normalizeHex(hex);
+    setDrumColors((prev) => ({ ...prev, [trackId]: next }));
+    DRUM_TRACKS[trackId].color = next;
+  }, []);
+
+  const spawnCircle = useCallback((slotId, colorSource, sizeBoost = 0) => {
+    if (countActiveCircles() >= MAX_TOTAL_CIRCLES) return;
+
     const slot = slotsRef.current[slotId];
     const existCount = slot.circles.filter((cc) => !cc.done).length;
+    if (existCount >= MAX_CIRCLES_PER_SLOT) return;
+
+    const pos = pickSpawnPosition();
+    if (!pos) return;
+
     const size =
-      rand(CIRCLE_SIZE_MIN, CIRCLE_SIZE_MAX) -
+      rand(CIRCLE_SIZE_MIN, CIRCLE_SIZE_MAX) *
+        (existCount === 0 ? 1 : rand(0.55, 0.92)) -
       existCount * CIRCLE_STACK_SHRINK +
       sizeBoost;
-    const rings = Math.floor(rand(3, 7));
+    const rings = Math.floor(rand(3, 6));
     if (size < CIRCLE_SIZE_FLOOR) return;
 
-    const ringColors = buildMixedRingColors(palIdx, rings);
+    const ringColors =
+      typeof colorSource === "string"
+        ? buildRingColorsFromBase(colorSource, rings)
+        : buildMixedRingColors(colorSource, rings);
     const mc = new MCircle(
       pos.x,
       pos.y,
@@ -579,27 +830,26 @@ export default function BeatCircleVisualizer() {
       ringColors,
       slotId
     );
-    if (tangent) mc.applyPathMotion(tangent);
+    if (pos.tangent) mc.applyPathMotion(pos.tangent);
 
     if (slot.last && !slot.last.done) {
       trailsRef.current.push(
         new Trail(slot.last.x, slot.last.y, mc.x, mc.y, withAlpha(pick(ringColors), 0.67))
       );
     }
+    const recent = slot.circles.filter((cc) => !cc.done).slice(-2);
+    recent.forEach((cc) => cc.trigger());
 
-    slot.circles.forEach((cc) => {
-      if (!cc.done) cc.trigger();
-    });
     slot.circles.push(mc);
     slot.last = mc;
     circlesRef.current.push(mc);
-  }, []);
+  }, [countActiveCircles, pickSpawnPosition]);
 
   const hitDrum = useCallback(
     (trackId) => {
-      const track = DRUM_TRACKS[trackId];
       playDrumSound(trackId);
-      spawnCircle(trackId, track.pal, rand(0, 18 * SIZE_SCALE));
+      const color = drumColorsRef.current[trackId] || DRUM_TRACKS[trackId].color;
+      spawnCircle(trackId, color, rand(0, 18 * SIZE_SCALE));
     },
     [playDrumSound, spawnCircle]
   );
@@ -663,6 +913,55 @@ export default function BeatCircleVisualizer() {
     setSeqRunning((r) => !r);
   }, []);
 
+  const removeVideo = useCallback(() => {
+    const v = videoRef.current;
+    if (v) {
+      v.pause();
+      v.removeAttribute("src");
+      v.load();
+    }
+    if (videoUrlRef.current) {
+      URL.revokeObjectURL(videoUrlRef.current);
+      videoUrlRef.current = null;
+    }
+    setVideoUrl(null);
+    setVideoLabel("");
+    setVideoReady(false);
+  }, []);
+
+  const handleVideoFile = useCallback(
+    (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !file.type.startsWith("video/")) return;
+      removeVideo();
+      const url = URL.createObjectURL(file);
+      videoUrlRef.current = url;
+      setVideoUrl(url);
+      setVideoLabel(file.name);
+      setVideoReady(false);
+      e.target.value = "";
+    },
+    [removeVideo]
+  );
+
+  useEffect(() => {
+    workSurfaceRef.current = createVideoWorkSurface(W, H);
+    return () => {
+      if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !videoUrl) return;
+    v.src = videoUrl;
+    v.load();
+    const onReady = () => setVideoReady(true);
+    v.addEventListener("loadeddata", onReady);
+    v.play().catch(() => {});
+    return () => v.removeEventListener("loadeddata", onReady);
+  }, [videoUrl]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -670,8 +969,26 @@ export default function BeatCircleVisualizer() {
     if (!ctx) return;
 
     function render() {
-      drawBg(ctx);
-      drawUserPaths(ctx, pathsRef.current, activeStrokeRef.current);
+      const video = videoRef.current;
+      const work = workSurfaceRef.current;
+      const drewVideo =
+        videoUrl &&
+        videoReady &&
+        video &&
+        work &&
+        drawVectorVideoBackground(ctx, video, work, {
+          width: W,
+          height: H,
+          threshold: fxThreshold,
+          halftone: fxHalftone,
+          bgColor: fxBgColor,
+        });
+
+      if (!drewVideo) drawBg(ctx, fxBgColor);
+
+      const now = performance.now();
+      updatePersistentPaths(pathsRef.current, now);
+      drawUserPaths(ctx, pathsRef.current, activeStrokeRef.current, now);
       trailsRef.current = trailsRef.current.filter((t) => !t.done);
       trailsRef.current.forEach((t) => {
         t.update();
@@ -689,6 +1006,7 @@ export default function BeatCircleVisualizer() {
           cc.done = true;
         }
       });
+      drawOverlayText(ctx, overlayTextRef.current);
       animIdRef.current = requestAnimationFrame(render);
     }
 
@@ -697,7 +1015,7 @@ export default function BeatCircleVisualizer() {
       if (animIdRef.current) cancelAnimationFrame(animIdRef.current);
       Object.values(flashTimersRef.current).forEach(clearTimeout);
     };
-  }, []);
+  }, [videoUrl, videoReady, fxThreshold, fxHalftone, fxBgColor, overlayText]);
 
   useEffect(() => {
     const keyMap = {};
@@ -780,7 +1098,18 @@ export default function BeatCircleVisualizer() {
   const finishStroke = useCallback(() => {
     const stroke = activeStrokeRef.current;
     if (stroke && stroke.points.length >= 2) {
-      pathsRef.current.push(stroke);
+      const born = performance.now();
+      const flourish = buildFlourishFromStroke(stroke.points, SIZE_SCALE);
+      if (!flourish) return;
+      pathsRef.current.push({
+        points: stroke.points,
+        born,
+        alpha: 1,
+        flourish,
+      });
+      if (pathsRef.current.length > MAX_PERSISTENT_PATHS) {
+        pathsRef.current.shift();
+      }
     }
     activeStrokeRef.current = null;
     isDrawingRef.current = false;
@@ -791,6 +1120,23 @@ export default function BeatCircleVisualizer() {
       if (e.button !== 0) return;
       const pt = getCanvasPoint(e.clientX, e.clientY);
       if (!pt) return;
+
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (
+        ctx &&
+        hitTestOverlayText(ctx, overlayTextRef.current, pt.x, pt.y, 18)
+      ) {
+        isDraggingTextRef.current = true;
+        setIsDraggingText(true);
+        textDragOffsetRef.current = {
+          x: pt.x - overlayTextRef.current.x,
+          y: pt.y - overlayTextRef.current.y,
+        };
+        e.currentTarget.setPointerCapture(e.pointerId);
+        return;
+      }
+
       isDrawingRef.current = true;
       activeStrokeRef.current = { points: [pt] };
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -800,14 +1146,39 @@ export default function BeatCircleVisualizer() {
 
   const onCanvasPointerMove = useCallback(
     (e) => {
+      const pt = getCanvasPoint(e.clientX, e.clientY);
+      if (!pt) return;
+
+      if (isDraggingTextRef.current) {
+        const next = {
+          ...overlayTextRef.current,
+          x: Math.max(0, Math.min(W, pt.x - textDragOffsetRef.current.x)),
+          y: Math.max(0, Math.min(H, pt.y - textDragOffsetRef.current.y)),
+        };
+        overlayTextRef.current = next;
+        setOverlayText(next);
+        return;
+      }
+
       if (!isDrawingRef.current) return;
       appendStrokePoint(e.clientX, e.clientY);
     },
-    [appendStrokePoint]
+    [getCanvasPoint, appendStrokePoint]
   );
 
   const onCanvasPointerUp = useCallback(
     (e) => {
+      if (isDraggingTextRef.current) {
+        isDraggingTextRef.current = false;
+        setIsDraggingText(false);
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
       if (!isDrawingRef.current) return;
       appendStrokePoint(e.clientX, e.clientY);
       finishStroke();
@@ -822,19 +1193,167 @@ export default function BeatCircleVisualizer() {
 
   return (
     <div className={styles.root}>
-      <div className={styles.canvasWrap}>
-        <p className={styles.drawHint}>캔버스에 드래그해 선을 그으면, 원이 선을 따라 나타납니다</p>
-        <canvas
-          ref={canvasRef}
+      <div className={styles.videoToolbar}>
+        <label className={styles.videoUpload}>
+          <input
+            type="file"
+            accept="video/*"
+            onChange={handleVideoFile}
+          />
+          영상 업로드
+        </label>
+        {videoUrl && (
+          <>
+            <span className={styles.videoName}>{videoLabel}</span>
+            <button type="button" className={styles.bb2} onClick={removeVideo}>
+              영상 제거
+            </button>
+            <div className={styles.fxRow}>
+              <span>Threshold</span>
+              <input
+                type="range"
+                min={60}
+                max={200}
+                value={fxThreshold}
+                onChange={(e) => setFxThreshold(Number(e.target.value))}
+              />
+              <span>{fxThreshold}</span>
+            </div>
+            <label className={styles.fxRow}>
+              <input
+                type="checkbox"
+                checked={fxHalftone}
+                onChange={(e) => setFxHalftone(e.target.checked)}
+              />
+              하프톤
+            </label>
+            <label className={styles.fxRow} title="밝은 영역·배경 색 (실루엣 검정은 유지)">
+              <span>배경</span>
+              <input
+                type="color"
+                className={styles.fxColor}
+                value={fxBgColor}
+                onChange={(e) => setFxBgColor(normalizeHex(e.target.value))}
+              />
+            </label>
+            <div className={styles.fxPresetsWrap}>
+              <div className={styles.fxPresets}>
+                {bgSlots.map((hex, i) => (
+                  <button
+                    key={`${i}-${hex}`}
+                    type="button"
+                    className={
+                      i === activeBgSlot
+                        ? `${styles.fxPresetBtn} ${styles.fxPresetBtnSelected}`
+                        : styles.fxPresetBtn
+                    }
+                    style={{ background: hex }}
+                    title={`${hex} — 클릭: 적용 · Shift+클릭: 저장 슬롯만 선택`}
+                    onClick={(e) => {
+                      if (e.shiftKey) {
+                        if (slotClickTimerRef.current) {
+                          clearTimeout(slotClickTimerRef.current);
+                          slotClickTimerRef.current = null;
+                        }
+                        setActiveBgSlot(i);
+                        return;
+                      }
+                      handleSlotClick(hex, i);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      handleSlotDoubleClick(i);
+                    }}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                className={styles.fxSaveSlot}
+                title={`슬롯 ${activeBgSlot + 1} ← 점선 테두리 슬롯에 지금 배경색 저장`}
+                onClick={() => saveBgSlot(activeBgSlot, fxBgColor)}
+              >
+                저장
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className={styles.textToolbar}>
+        <label className={styles.textToolbarLabel}>
+          <span>텍스트</span>
+          <textarea
+            className={styles.textArea}
+            rows={3}
+            value={overlayText.text}
+            placeholder={"bad bitch\npretty with\n..."}
+            onChange={(e) =>
+              setOverlayText((prev) => ({ ...prev, text: e.target.value }))
+            }
+          />
+        </label>
+        <label className={styles.fxRow}>
+          <span>글자색</span>
+          <input
+            type="color"
+            className={styles.fxColor}
+            value={overlayText.color}
+            onChange={(e) =>
+              setOverlayText((prev) => ({
+                ...prev,
+                color: normalizeHex(e.target.value),
+              }))
+            }
+          />
+        </label>
+        <label className={styles.fxRow}>
+          <span>크기</span>
+          <input
+            type="range"
+            min={28}
+            max={120}
+            value={overlayText.fontSize}
+            onChange={(e) =>
+              setOverlayText((prev) => ({
+                ...prev,
+                fontSize: Number(e.target.value),
+              }))
+            }
+          />
+          <span>{overlayText.fontSize}</span>
+        </label>
+        <span className={styles.textHint}>캔버스에서 글자를 드래그해 위치 이동</span>
+      </div>
+
+      <video
+        ref={videoRef}
+        muted
+        loop
+        playsInline
+        preload="auto"
+        style={{ display: "none" }}
+      />
+      <div className={styles.stage}>
+        <div className={styles.canvasWrap}>
+          <p className={styles.drawHint}>
+            {videoUrl
+              ? "장식 선은 사라지지 않고 퍼지며 남음 · 원은 궤적 위에만"
+              : "드래그한 장식 선은 캔버스에 남고 퍼져 나갑니다 (선 지우기/Clear로 삭제)"}
+          </p>
+          <canvas
+            ref={canvasRef}
           className={styles.canvas}
           width={W}
           height={H}
           aria-label="Music video circles"
-          onPointerDown={onCanvasPointerDown}
-          onPointerMove={onCanvasPointerMove}
-          onPointerUp={onCanvasPointerUp}
-          onPointerCancel={onCanvasPointerUp}
-        />
+          style={{ cursor: isDraggingText ? "grabbing" : "crosshair" }}
+            onPointerDown={onCanvasPointerDown}
+            onPointerMove={onCanvasPointerMove}
+            onPointerUp={onCanvasPointerUp}
+            onPointerCancel={onCanvasPointerUp}
+          />
+        </div>
         <div className={styles.hud}>
           <div className={styles.keyGroup}>
             {KEYS.map((k, i) => {
@@ -845,11 +1364,14 @@ export default function BeatCircleVisualizer() {
                   key={k.key}
                   type="button"
                   className={`${styles.kkey} ${flashing ? styles.kkeyActive : ""}`}
-                  style={{
-                    borderColor: flashing ? pal.base : pal.base + "66",
-                    background: flashing ? pal.base : "#f5f5f5",
-                    color: flashing ? "#fff" : "#333",
-                  }}
+                  style={
+                    flashing
+                      ? {
+                          background: `linear-gradient(180deg, ${pal.light} 0%, ${pal.base} 100%)`,
+                          boxShadow: `0 0 0 2px rgba(255,255,255,0.5), 0 0 14px ${pal.base}88, inset 0 3px 10px rgba(40,50,70,0.3)`,
+                        }
+                      : undefined
+                  }
                   onPointerDown={() => hitKey(k, i)}
                   aria-label={`Key ${k.key.toUpperCase()}`}
                 >
@@ -896,9 +1418,20 @@ export default function BeatCircleVisualizer() {
           const track = DRUM_TRACKS[trackId];
           return (
             <div key={trackId} className={styles.seqRow}>
-              <span className={styles.seqLabel} style={{ color: track.color }}>
+              <span
+                className={styles.seqLabel}
+                style={{ color: drumColors[trackId] }}
+              >
                 {track.label}
               </span>
+              <input
+                type="color"
+                className={styles.trackColorPick}
+                value={drumColors[trackId]}
+                onChange={(e) => setDrumColor(trackId, e.target.value)}
+                title={`${track.label} 원 색상`}
+                aria-label={`${track.label} 색상`}
+              />
               <div className={styles.seqSteps}>
                 {drumPattern[trackId].map((on, i) => (
                   <button
@@ -906,11 +1439,18 @@ export default function BeatCircleVisualizer() {
                     type="button"
                     className={[
                       styles.sq,
-                      on ? SQ_ON_CLASS[trackId] : "",
                       seqRunning && i === seqCurStep ? styles.sqCur : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
+                    style={
+                      on
+                        ? {
+                            background: drumColors[trackId],
+                            borderColor: drumColors[trackId],
+                          }
+                        : undefined
+                    }
                     onClick={() => toggleDrumStep(trackId, i)}
                     aria-label={`${track.label} step ${i + 1}`}
                   />
