@@ -6,7 +6,7 @@ const DEFAULT_COLOR = "#E91E63";
 
 export function defaultOverlayText(scale = 1) {
   return {
-    text: "bad bitch\npretty with\ndouble d tits",
+    text: "bad bitch\npretty with",
     x: Math.round(72 * scale),
     y: Math.round(100 * scale),
     color: DEFAULT_COLOR,

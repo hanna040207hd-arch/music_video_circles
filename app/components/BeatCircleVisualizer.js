@@ -1287,7 +1287,7 @@ export default function BeatCircleVisualizer() {
             className={styles.textArea}
             rows={3}
             value={overlayText.text}
-            placeholder={"bad bitch\npretty with\n..."}
+            placeholder={"bad bitch\npretty with"}
             onChange={(e) =>
               setOverlayText((prev) => ({ ...prev, text: e.target.value }))
             }
