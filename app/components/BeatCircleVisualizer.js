@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  createCanvasRecorder,
+  downloadBlob,
+} from "../lib/canvasRecorder";
+import {
   defaultOverlayText,
   drawOverlayText,
   hitTestOverlayText,
@@ -565,6 +569,9 @@ export default function BeatCircleVisualizer() {
   const trailsRef = useRef([]);
   const slotsRef = useRef(createSlots());
   const audioCtxRef = useRef(null);
+  const masterGainRef = useRef(null);
+  const recordDestRef = useRef(null);
+  const recorderSessionRef = useRef(null);
   const animIdRef = useRef(null);
   const seqStepRef = useRef(0);
   const seqTimerRef = useRef(null);
@@ -597,6 +604,7 @@ export default function BeatCircleVisualizer() {
     defaultOverlayText(SIZE_SCALE)
   );
   const [isDraggingText, setIsDraggingText] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const overlayTextRef = useRef(overlayText);
   const slotClickTimerRef = useRef(null);
   const [drumColors, setDrumColors] = useState(defaultDrumColors);
@@ -670,6 +678,16 @@ export default function BeatCircleVisualizer() {
     return audioCtxRef.current;
   }, []);
 
+  const getMasterGain = useCallback(() => {
+    const a = getAC();
+    if (!masterGainRef.current) {
+      masterGainRef.current = a.createGain();
+      masterGainRef.current.gain.value = 1;
+      masterGainRef.current.connect(a.destination);
+    }
+    return masterGainRef.current;
+  }, [getAC]);
+
   const playDrumSound = useCallback(
     (trackId) => {
       const track = DRUM_TRACKS[trackId];
@@ -679,7 +697,7 @@ export default function BeatCircleVisualizer() {
       const g = a.createGain();
       g.gain.setValueAtTime(0.65, a.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + s.decay);
-      g.connect(a.destination);
+      g.connect(getMasterGain());
 
       if (s.noise) {
         const buf = a.createBuffer(1, a.sampleRate * s.decay, a.sampleRate);
@@ -708,7 +726,7 @@ export default function BeatCircleVisualizer() {
         osc.stop(a.currentTime + s.decay + 0.05);
       }
     },
-    [getAC]
+    [getAC, getMasterGain]
   );
 
   const playKeySound = useCallback(
@@ -719,7 +737,7 @@ export default function BeatCircleVisualizer() {
       const g = a.createGain();
       g.gain.setValueAtTime(0.6, a.currentTime);
       g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + s.decay);
-      g.connect(a.destination);
+      g.connect(getMasterGain());
       const isNoise = idx === 1 || idx === 2 || idx === 5;
       if (isNoise) {
         const buf = a.createBuffer(1, a.sampleRate * s.decay, a.sampleRate);
@@ -748,8 +766,78 @@ export default function BeatCircleVisualizer() {
         osc.stop(a.currentTime + s.decay + 0.05);
       }
     },
-    [getAC]
+    [getAC, getMasterGain]
   );
+
+  const stopRecording = useCallback(async () => {
+    const session = recorderSessionRef.current;
+    recorderSessionRef.current = null;
+    setIsRecording(false);
+    if (!session) return;
+
+    try {
+      const blob = await session.stop();
+      const ext = session.mimeType.indexOf("webm") >= 0 ? "webm" : "mp4";
+      downloadBlob(blob, "music-video-circles-" + Date.now() + "." + ext);
+    } catch (err) {
+      console.error(err);
+    }
+
+    if (recordDestRef.current && masterGainRef.current) {
+      try {
+        masterGainRef.current.disconnect(recordDestRef.current);
+      } catch {
+        /* already disconnected */
+      }
+      recordDestRef.current = null;
+    }
+  }, []);
+
+  const startRecording = useCallback(async () => {
+    const canvas = canvasRef.current;
+    if (!canvas || recorderSessionRef.current) return;
+
+    try {
+      const ac = getAC();
+      await ac.resume();
+
+      const v = videoRef.current;
+      if (v && videoUrl) {
+        try {
+          await v.play();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const dest = ac.createMediaStreamDestination();
+      recordDestRef.current = dest;
+      getMasterGain().connect(dest);
+
+      const session = createCanvasRecorder(canvas, dest.stream, 30);
+      recorderSessionRef.current = session;
+      session.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error(err);
+      setIsRecording(false);
+      recorderSessionRef.current = null;
+    }
+  }, [getAC, getMasterGain, videoUrl]);
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  }, [isRecording, startRecording, stopRecording]);
+
+  useEffect(() => {
+    return () => {
+      if (recorderSessionRef.current) {
+        recorderSessionRef.current.stop().catch(function () {});
+        recorderSessionRef.current = null;
+      }
+    };
+  }, []);
 
   const countActiveCircles = useCallback(() => {
     return circlesRef.current.filter((cc) => !cc.done).length;
@@ -1408,6 +1496,14 @@ export default function BeatCircleVisualizer() {
             </button>
             <button type="button" className={styles.bb2} onClick={clearAll}>
               Clear
+            </button>
+            <button
+              type="button"
+              className={`${styles.bb2} ${isRecording ? styles.bb2On : ""}`}
+              onClick={toggleRecording}
+              title="캔버스+소리 녹화 (WebM). 종료 시 파일 저장"
+            >
+              {isRecording ? "■ 저장 종료" : "● 영상 저장"}
             </button>
           </div>
         </div>
