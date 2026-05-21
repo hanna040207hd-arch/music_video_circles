@@ -1,0 +1,193 @@
+.root {
+  background: #fff;
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  position: relative;
+  user-select: none;
+  max-width: 1400px;
+  width: 100%;
+  margin: 24px auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+}
+
+.canvasWrap {
+  position: relative;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.drawHint {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.hud {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.keyGroup {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.kkey {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  background: #f5f5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #333;
+  transition: all 0.08s;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
+.kkeyActive {
+  transform: scale(0.85);
+}
+
+.sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.ctrlRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.bb2 {
+  border: 0.5px solid rgba(0, 0, 0, 0.15);
+  border-radius: 20px;
+  background: none;
+  font-size: 11px;
+  color: #555;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.bb2:hover {
+  background: #f0f0f0;
+}
+
+.bb2On {
+  background: #e2185a;
+  color: #fff;
+  border-color: #e2185a;
+}
+
+.bpmRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #888;
+}
+
+.bpmRow input {
+  width: 70px;
+  accent-color: #e2185a;
+}
+
+.seqPanel {
+  padding: 8px 14px 12px;
+  background: #fff;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+
+.seqRow {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+  padding-top: 4px;
+}
+
+.seqLabel {
+  font-size: 11px;
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.seqSteps {
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px;
+  flex: 1;
+}
+
+.sq {
+  height: 26px;
+  border-radius: 2px;
+  background: #f0f2f5;
+  cursor: pointer;
+  border: 0.5px solid #e0e4ea;
+  transition: background 0.1s;
+  padding: 0;
+}
+
+.sqOnKick {
+  background: #e2185a;
+  border-color: #e2185a;
+}
+
+.sqOnSnare {
+  background: #f57c00;
+  border-color: #f57c00;
+}
+
+.sqOnHihat {
+  background: #00897b;
+  border-color: #00897b;
+}
+
+.sqOnBass {
+  background: #6c3aba;
+  border-color: #6c3aba;
+}
+
+.sqOnPerc {
+  background: #1565c0;
+  border-color: #1565c0;
+}
+
+.sqCur {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
