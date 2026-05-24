@@ -241,13 +241,10 @@ function buildBokehAndSparkles(curve, seed, s, len) {
 export function buildFlourishFromStroke(rawPoints, scale = 1) {
   if (!rawPoints || rawPoints.length < 2) return null;
 
-  const seed =
-    rawPoints[0].x * 0.17 +
-    rawPoints[0].y * 0.31 +
-    rawPoints.length * 0.9;
+  const seed = rawPoints[0].x * 0.17 + rawPoints[0].y * 0.31;
   const s = scale;
   const step = Math.max(6, 10 * s);
-  const waveAmp = Math.max(14, 22 * s);
+  const waveAmp = Math.max(8, 12 * s);
 
   let pts = resamplePath(rawPoints, step);
   pts = smoothChaikin(pts, 3);
@@ -258,69 +255,42 @@ export function buildFlourishFromStroke(rawPoints, scale = 1) {
   if (pts.length < 3) return null;
 
   const curve = attachNormals(pts);
-  const len = pathLength(curve);
   const pal = pickPalette(seed);
 
   const ribbons = [
     {
-      offset: -14 * s,
+      offset: -24 * s,
       colorStart: pal.main.dark,
       colorEnd: pal.main.light,
-      widthStart: 1.4 * s,
-      widthEnd: 0.35 * s,
-      alphaMul: 0.75,
+      widthStart: 3.8 * s,
+      widthEnd: 1.2 * s,
+      alphaMul: 0.78,
     },
     {
-      offset: -5 * s,
+      offset: -8 * s,
       colorStart: pal.second.dark,
       colorEnd: pal.second.light,
-      widthStart: 3.4 * s,
-      widthEnd: 0.55 * s,
-      alphaMul: 0.92,
+      widthStart: 6.2 * s,
+      widthEnd: 1.7 * s,
+      alphaMul: 0.94,
     },
     {
-      offset: 5 * s,
+      offset: 8 * s,
       colorStart: pal.third.dark,
       colorEnd: pal.third.light,
-      widthStart: 2.6 * s,
-      widthEnd: 0.45 * s,
-      alphaMul: 0.85,
+      widthStart: 5.2 * s,
+      widthEnd: 1.5 * s,
+      alphaMul: 0.88,
     },
     {
-      offset: 14 * s,
+      offset: 24 * s,
       colorStart: pal.main.light,
       colorEnd: "#ffffff",
-      widthStart: 1.2 * s,
-      widthEnd: 0.3 * s,
-      alphaMul: 0.65,
+      widthStart: 3.4 * s,
+      widthEnd: 1.1 * s,
+      alphaMul: 0.7,
     },
   ];
-
-  const splatters = [];
-  const splatCount = Math.min(56, Math.max(14, Math.floor(len / (28 * s))));
-  for (let i = 0; i < splatCount; i++) {
-    const t = seeded(seed, i * 3);
-    const idx = Math.floor(t * (curve.length - 1));
-    const p = curve[idx];
-    const spread = (10 + seeded(seed, i * 3 + 1) * 28) * s;
-    const ang = seeded(seed, i * 3 + 2) * Math.PI * 2;
-    const driftNx = Math.cos(ang);
-    const driftNy = Math.sin(ang);
-    const distMul = 0.3 + seeded(seed, i + 40) * 0.9;
-    const colors = [pal.main.light, pal.second.light, pal.third.light, "#ffffff"];
-    splatters.push({
-      x: p.x + driftNx * spread * distMul,
-      y: p.y + driftNy * spread * distMul,
-      driftNx,
-      driftNy,
-      r: (1.2 + seeded(seed, i + 50) * 4) * s,
-      color: colors[Math.floor(seeded(seed, i + 60) * colors.length)],
-      a: 0.2 + seeded(seed, i + 70) * 0.5,
-    });
-  }
-
-  const start = curve[0];
-  const end = curve[curve.length - 1];
 
   return {
     seed,
@@ -328,26 +298,6 @@ export function buildFlourishFromStroke(rawPoints, scale = 1) {
     palette: pal,
     curve,
     ribbons,
-    splatters,
-    spirals: buildSpirals(curve, seed, s),
-    petals: buildPetals(curve, seed, s, len),
-    ...buildBokehAndSparkles(curve, seed, s, len),
-    endCap: {
-      x: end.x + end.nx * 3 * s,
-      y: end.y + end.ny * 3 * s,
-      r: 5 * s,
-      color: pal.main.light,
-      dark: pal.main.dark,
-    },
-    startCurl: {
-      x: start.x,
-      y: start.y,
-      nx: start.nx,
-      ny: start.ny,
-      radius: 10 * s,
-      color: pal.second.light,
-      dark: pal.second.dark,
-    },
   };
 }
 
@@ -378,12 +328,17 @@ function ribbonStrokeColors(ribbon) {
   };
 }
 
-/** 한 리본을 곡선 전체에 이어 그림 (세그먼트 분할 stroke 제거) */
+/** 0 at stroke start → 1 along path (smooth fan-open) */
+function smoothFan(t) {
+  const x = Math.max(0, Math.min(1, t * 1.45));
+  return x * x * (3 - 2 * x);
+}
+
+/** 한 리본을 곡선 전체에 이어 그림 */
 function drawRibbonPath(ctx, curve, ribbon, alpha, reveal, spread) {
   const n = curve.length;
   if (n < 2 || reveal <= 0) return;
 
-  const off = ribbon.offset * spread;
   const endIdx = Math.max(1, Math.min(n - 1, Math.ceil(reveal * (n - 1))));
   const colors = ribbonStrokeColors(ribbon);
   const strokeA = Math.min(1, alpha * (ribbon.alphaMul ?? 0.9) * Math.min(1, reveal * 1.15));
@@ -392,16 +347,18 @@ function drawRibbonPath(ctx, curve, ribbon, alpha, reveal, spread) {
   const pts = [];
   for (let i = 0; i <= endIdx; i++) {
     const p = curve[i];
-    pts.push({ x: p.x + p.nx * off, y: p.y + p.ny * off });
+    const tAlong = i / Math.max(1, endIdx);
+    const fan = smoothFan(tAlong);
+    const offNow = ribbon.offset * spread * fan;
+    pts.push({ x: p.x + p.nx * offNow, y: p.y + p.ny * offNow, t: tAlong });
   }
   if (pts.length < 2) return;
 
   const first = pts[0];
   const last = pts[pts.length - 1];
-  const midT = 0.5;
   const lineW = Math.max(
-    2.5,
-    lerp(ribbon.widthStart, ribbon.widthEnd, midT) * (0.95 + spread * 0.08)
+    3.2,
+    lerp(ribbon.widthEnd, ribbon.widthStart, 0.55) * (0.95 + spread * 0.1)
   );
 
   ctx.save();
@@ -426,6 +383,36 @@ function drawRibbonPath(ctx, curve, ribbon, alpha, reveal, spread) {
   ctx.lineWidth = lineW;
   ctx.stroke();
   ctx.restore();
+}
+
+function drawRibbons(ctx, flourish, alpha, reveal, spread) {
+  const curve = flourish.curve;
+  if (!curve || curve.length < 2) return;
+  const ribbons = flourish.ribbons || [];
+  ribbons.forEach((ribbon) => {
+    drawRibbonPath(ctx, curve, ribbon, alpha, reveal, spread);
+  });
+  const centerRibbon = {
+    offset: 0,
+    colorStart: flourish.palette?.main?.dark || "#0066CC",
+    colorEnd: flourish.palette?.main?.light || "#00D4FF",
+    widthStart: (ribbons[1]?.widthStart || 5.5) * 1.08,
+    widthEnd: (ribbons[1]?.widthEnd || 1.4) * 1.15,
+    alphaMul: 0.98,
+  };
+  drawRibbonPath(ctx, curve, centerRibbon, alpha, reveal, spread * 0.92);
+}
+
+/** 드래그 중 — 경로 따라가는 리본 미리보기 */
+export function drawStrokeFanPreview(ctx, rawPoints, scale = 1) {
+  const draft = buildFlourishFromStroke(rawPoints, scale);
+  if (!draft) return;
+  let len = 0;
+  for (let i = 1; i < rawPoints.length; i++) {
+    len += dist(rawPoints[i - 1], rawPoints[i]);
+  }
+  const reveal = Math.min(1, len / (110 * scale));
+  drawRibbons(ctx, draft, 0.82, reveal, 1);
 }
 
 function drawSpiral(ctx, sp, alpha, reveal, spread) {
@@ -566,82 +553,13 @@ export function drawFlourish(ctx, flourish, evolve) {
   const r = Math.max(0, Math.min(1, evolve.reveal));
   if (r <= 0) return;
 
-  const alpha = evolve.pulse;
-  const spread = evolve.spread;
-  const driftPx = evolve.splatDrift * (38 * (flourish.scale || 1));
   const curve = animatedCurve(flourish.curve, evolve.wobble, evolve.age);
-
-  (flourish.bokeh || []).forEach((orb) => {
-    drawBokeh(ctx, orb, alpha, r * 0.85);
-  });
-
-  const ribbons = flourish.ribbons || [];
-  ribbons.forEach((ribbon) => {
-    drawRibbonPath(ctx, curve, ribbon, alpha, r, spread);
-  });
-
-  const centerRibbon = {
-    offset: 0,
-    colorStart: flourish.palette?.main?.dark || "#0066CC",
-    colorEnd: flourish.palette?.main?.light || "#00D4FF",
-    widthStart: (ribbons[1]?.widthStart || 4) * 1.05,
-    widthEnd: (ribbons[1]?.widthEnd || 0.8) * 1.1,
-    alphaMul: 0.98,
-  };
-  drawRibbonPath(ctx, curve, centerRibbon, alpha, r, spread * 0.92);
-
-  const splatN = flourish.splatters.length || 1;
-  flourish.splatters.forEach((sp, i) => {
-    const t = i / splatN;
-    const bornIn = Math.max(0, Math.min(1, (r - t) * 2.5 + 0.25));
-    if (bornIn <= 0) return;
-    const sx = sp.x + sp.driftNx * driftPx;
-    const sy = sp.y + sp.driftNy * driftPx;
-    ctx.beginPath();
-    ctx.arc(sx, sy, safeRadius(sp.r * bornIn * (1 + evolve.splatDrift * 0.35)), 0, Math.PI * 2);
-    ctx.fillStyle = rgbaFromHex(sp.color, alpha * sp.a * bornIn * 0.55);
-    ctx.fill();
-  });
-
-  (flourish.petals || []).forEach((petal) => {
-    drawPetal(ctx, petal, alpha, r, spread);
-  });
-
-  (flourish.spirals || []).forEach((sp) => {
-    drawSpiral(ctx, sp, alpha, r, spread);
-  });
-
-  (flourish.sparkles || []).forEach((sp) => {
-    drawSparkle(ctx, sp, alpha, r, evolve.age);
-  });
-
-  const end = curve[curve.length - 1];
-  const start = curve[0];
-  drawStartCurl(
+  drawRibbons(
     ctx,
-    {
-      x: start.x,
-      y: start.y,
-      nx: start.nx,
-      ny: start.ny,
-      radius: flourish.startCurl.radius * (0.9 + spread * 0.15),
-      color: flourish.startCurl.color,
-      dark: flourish.startCurl.dark,
-    },
-    alpha,
-    r
-  );
-  drawEndCap(
-    ctx,
-    {
-      x: end.x + end.nx * 3 * flourish.scale,
-      y: end.y + end.ny * 3 * flourish.scale,
-      r: flourish.endCap.r * (0.95 + spread * 0.12),
-      color: flourish.endCap.color,
-      dark: flourish.endCap.dark,
-    },
-    alpha,
-    r
+    { ...flourish, curve },
+    evolve.pulse,
+    r,
+    evolve.spread
   );
 }
 
@@ -652,10 +570,10 @@ export function getFlourishEvolve(path, now) {
   const age = now - born;
   const reveal = Math.min(1, age / REVEAL_MS);
   const growAge = Math.max(0, age - REVEAL_MS);
-  const spread = 1 + (1 - Math.exp(-growAge / 2600)) * 0.72;
+  const spread = 1.12 + (1 - Math.exp(-growAge / 1800)) * 0.95;
   const splatDrift = 1 - Math.exp(-growAge / 2000);
-  const pulse = 0.88 + Math.sin(age / 820) * 0.12;
-  const wobble = (1 - Math.exp(-growAge / 3200)) * 4.5;
+  const pulse = 0.94;
+  const wobble = 0;
 
   return { reveal, spread, splatDrift, pulse, wobble, age };
 }

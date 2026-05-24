@@ -11,6 +11,7 @@ export function defaultOverlayText(scale = 1) {
     y: Math.round(100 * scale),
     color: DEFAULT_COLOR,
     fontSize: Math.round(52 * scale),
+    scaleX: 1,
   };
 }
 
@@ -29,6 +30,7 @@ export function measureOverlayText(ctx, block) {
   const fontSize = block.fontSize || 48;
   const lineHeight = fontSize * 0.9;
   const tracking = -fontSize * 0.045;
+  const scaleX = block.scaleX || 1;
 
   ctx.save();
   ctx.font = `900 ${fontSize}px "Arial Black", Impact, "Helvetica Neue", Arial, sans-serif`;
@@ -46,7 +48,7 @@ export function measureOverlayText(ctx, block) {
   ctx.restore();
 
   return {
-    width: maxW,
+    width: maxW * scaleX,
     height: lines.length * lineHeight,
     lineHeight,
     lines,
@@ -72,15 +74,18 @@ export function drawOverlayText(ctx, block) {
   const fontSize = block.fontSize || 48;
   const lineHeight = fontSize * 0.9;
   const color = block.color || DEFAULT_COLOR;
+  const scaleX = block.scaleX || 1;
 
   ctx.save();
   ctx.font = `900 ${fontSize}px "Arial Black", Impact, "Helvetica Neue", Arial, sans-serif`;
   ctx.textBaseline = "top";
   ctx.textAlign = "left";
+  ctx.translate(block.x, block.y);
+  ctx.scale(scaleX, 1);
 
   lines.forEach((line, i) => {
     if (!line.trim()) return;
-    drawTightLine(ctx, line, block.x, block.y + i * lineHeight, fontSize, color);
+    drawTightLine(ctx, line, 0, i * lineHeight, fontSize, color);
   });
 
   ctx.restore();

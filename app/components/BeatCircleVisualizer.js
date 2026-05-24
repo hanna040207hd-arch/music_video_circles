@@ -13,6 +13,7 @@ import {
 import {
   buildFlourishFromStroke,
   drawFlourish,
+  drawStrokeFanPreview,
   getFlourishEvolve,
 } from "../lib/pathFlourish";
 import {
@@ -52,31 +53,31 @@ const PALETTE = [
 const DRUM_TRACKS = {
   kick: {
     label: "Kick",
-    color: "#E2185A",
+    color: "#FF1493",
     pal: 0,
     sound: { freq: 60, type: "sine", decay: 0.45, noise: false, drop: true },
   },
   snare: {
     label: "Snare",
-    color: "#F57C00",
+    color: "#FFD600",
     pal: 5,
     sound: { freq: 2200, type: "square", decay: 0.18, noise: true },
   },
   hihat: {
     label: "Hat",
-    color: "#00897B",
+    color: "#39FF14",
     pal: 2,
     sound: { freq: 900, type: "square", decay: 0.08, noise: true },
   },
   bass: {
     label: "Bass",
-    color: "#6C3ABA",
+    color: "#7B2CFF",
     pal: 6,
     sound: { freq: 80, type: "sawtooth", decay: 0.35, noise: false },
   },
   perc: {
     label: "Perc",
-    color: "#1565C0",
+    color: "#00FFFF",
     pal: 4,
     sound: { freq: 300, type: "triangle", decay: 0.12, noise: false },
   },
@@ -197,14 +198,6 @@ function persistBgColor(hex) {
   }
 }
 
-function withAlpha(color, alpha) {
-  const hex = normalizeHex(color);
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
 function hexToRgb(hex) {
   const h = normalizeHex(hex);
   return {
@@ -222,16 +215,42 @@ function rgbToHex(r, g, b) {
   );
 }
 
-function randomPaletteAccent() {
-  const pal = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-  const tones = [pal.base, pal.mid, pal.light, pal.dark];
-  return normalizeHex(tones[Math.floor(Math.random() * tones.length)]);
+function lightenHex(hex, t) {
+  const { r, g, b } = hexToRgb(hex);
+  const mix = Math.max(0, Math.min(1, t));
+  return rgbToHex(
+    r + (255 - r) * mix,
+    g + (255 - g) * mix,
+    b + (255 - b) * mix
+  );
 }
 
-function randomTintOfBase(baseHex) {
-  const { r, g, b } = hexToRgb(baseHex);
-  const mix = () => rand(-55, 55);
-  return rgbToHex(r + mix(), g + mix(), b + mix());
+function darkenHex(hex, t) {
+  const { r, g, b } = hexToRgb(hex);
+  const mix = Math.max(0, Math.min(1, t));
+  return rgbToHex(r * (1 - mix), g * (1 - mix), b * (1 - mix));
+}
+
+function blendHex(a, b, t) {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  const mix = Math.max(0, Math.min(1, t));
+  return rgbToHex(
+    A.r + (B.r - A.r) * mix,
+    A.g + (B.g - A.g) * mix,
+    A.b + (B.b - A.b) * mix
+  );
+}
+
+/** 트랙/컬러피커 지정색 → 링·채우기용 밝기 단계만 */
+function buildPaletteFromHex(baseHex) {
+  const base = normalizeHex(baseHex);
+  return {
+    base,
+    light: lightenHex(base, 0.38),
+    mid: lightenHex(base, 0.16),
+    dark: darkenHex(base, 0.32),
+  };
 }
 
 function defaultDrumColors() {
@@ -241,14 +260,52 @@ function defaultDrumColors() {
   }, {});
 }
 
-/** 지정 색 1개 + 링마다 무작위 보조 색 */
-function buildRingColorsFromBase(baseHex, ringCount) {
-  const base = normalizeHex(baseHex);
-  const colors = [base];
-  for (let i = 1; i < ringCount; i++) {
-    colors.push(Math.random() < 0.55 ? randomPaletteAccent() : randomTintOfBase(base));
+/**
+ * fillColors: 바깥 채우기·중심 — 지정 색 계열
+ * strokeColors: 안쪽 얇은 링 선 — 같은 계열 + accentHexes 살짝 블렌드
+ */
+function buildRingColorSets(baseHex, ringCount, accentHexes) {
+  const pal = buildPaletteFromHex(baseHex);
+  const tones = [pal.base, pal.light, pal.mid, pal.dark];
+  const accents = (accentHexes || [])
+    .map((h) => normalizeHex(h))
+    .filter((h) => h && h !== normalizeHex(baseHex));
+  const fillColors = [];
+  const strokeColors = [];
+
+  for (let i = 0; i < ringCount; i++) {
+    const main = normalizeHex(tones[i % tones.length]);
+    fillColors.push(main);
+
+    if (i === 0) {
+      strokeColors.push(main);
+      continue;
+    }
+
+    if (accents.length > 0 && Math.random() < 0.72) {
+      const accent = accents[Math.floor(Math.random() * accents.length)];
+      strokeColors.push(
+        normalizeHex(blendHex(main, accent, rand(0.2, 0.42)))
+      );
+    } else {
+      strokeColors.push(
+        normalizeHex(blendHex(main, tones[(i + 1) % tones.length], 0.18))
+      );
+    }
   }
-  return colors;
+
+  return { fillColors, strokeColors };
+}
+
+function drumAccentColors(excludeTrackId, drumColorMap) {
+  return DRUM_TRACK_KEYS.filter((id) => id !== excludeTrackId).map(
+    (id) => drumColorMap[id] || DRUM_TRACKS[id].color
+  );
+}
+
+function paletteAccentColors(excludePalIdx) {
+  const skip = excludePalIdx % PALETTE.length;
+  return PALETTE.filter((_, i) => i !== skip).map((p) => p.base);
 }
 
 const MIN_POINT_DIST = 6;
@@ -335,17 +392,11 @@ function drawUserPaths(c, paths, activeStroke, now) {
   });
 
   if (activeStroke && activeStroke.points.length >= 2) {
-    const pts = activeStroke.points;
-    c.save();
-    c.setLineDash([6, 8]);
-    c.lineCap = "round";
-    c.beginPath();
-    c.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i].x, pts[i].y);
-    c.strokeStyle = "rgba(155,27,111,0.28)";
-    c.lineWidth = 1.5;
-    c.stroke();
-    c.restore();
+    try {
+      drawStrokeFanPreview(c, activeStroke.points, SIZE_SCALE);
+    } catch {
+      /* skip preview frame */
+    }
   }
 }
 
@@ -367,23 +418,13 @@ function randomSpawnPos() {
   };
 }
 
-function paletteColor(pal, kind) {
-  const tones = [pal.base, pal.mid, pal.light, pal.dark, "#ffffff"];
-  return normalizeHex(tones[kind ?? Math.floor(Math.random() * tones.length)]);
-}
-
-function buildMixedRingColors(primaryPalIdx, ringCount) {
+function buildMixedRingColorSets(primaryPalIdx, ringCount) {
   const primary = PALETTE[primaryPalIdx % PALETTE.length];
-  const colors = [];
-  for (let i = 0; i < ringCount; i++) {
-    if (Math.random() < 0.45) {
-      colors.push(paletteColor(primary));
-    } else {
-      const extra = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      colors.push(paletteColor(Math.random() < 0.5 ? primary : extra));
-    }
-  }
-  return colors;
+  return buildRingColorSets(
+    primary.base,
+    ringCount,
+    paletteAccentColors(primaryPalIdx)
+  );
 }
 
 function emptyDrumPattern() {
@@ -412,18 +453,19 @@ function makeRandomDrumPattern() {
 function createSlots() {
   const slots = {};
   [...KEYS.map((k) => k.key), ...DRUM_TRACK_KEYS].forEach((id) => {
-    slots[id] = { circles: [], last: null };
+    slots[id] = { circles: [] };
   });
   return slots;
 }
 
 class MCircle {
-  constructor(x, y, size, rings, ringColors, slotId) {
+  constructor(x, y, size, rings, ringColors, slotId, ringStrokeColors) {
     this.x = x;
     this.y = y;
     this.size = size;
     this.rings = rings;
     this.ringColors = ringColors.map(normalizeHex);
+    this.ringStrokeColors = (ringStrokeColors || ringColors).map(normalizeHex);
     this.slotId = slotId;
     this.ringStretch = 0.72 + Math.random() * 0.22;
     this.ringRadii = Array.from({ length: rings }, (_, i) => {
@@ -432,9 +474,12 @@ class MCircle {
       return Math.max(size * (1 - shrink), 8 * SIZE_SCALE);
     });
     this.ringWidths = Array.from({ length: rings }, (_, i) =>
-      i === 0 ? rand(2.5, 4.5) : rand(1.2, 2.8)
+      i === 0 ? rand(3, 5.5) : rand(3.4, 6.2)
     );
     this.centerR = size * rand(0.12, 0.22);
+    this.whiteAccentMode = Math.random() < 0.5 ? "center" : "ring";
+    this.whiteRingIndex =
+      rings > 1 ? Math.floor(rand(1, rings)) : 0;
     this.drift = rand(0.3, 0.55);
     this.age = 0;
     this.maxAge = 140 + Math.random() * 120;
@@ -465,10 +510,7 @@ class MCircle {
     this.age++;
     this.wobble += this.wobbleSpd;
     this.pulse *= 0.88;
-    const progress = this.age / this.maxAge;
-    if (progress < 0.08) this.alpha = Math.max(0.2, progress / 0.08);
-    else if (progress > 0.65) this.alpha = 1 - (progress - 0.65) / 0.35;
-    else this.alpha = 1;
+    this.alpha = 1;
     this.x += this.vx * this.drift;
     this.y += this.vy * this.drift;
     if (this.x < this.size) this.vx = Math.abs(this.vx) * 0.75;
@@ -485,7 +527,7 @@ class MCircle {
 
     try {
       c.save();
-      c.globalAlpha = alpha * 0.92;
+      c.globalAlpha = 1;
       c.translate(this.x, this.y);
       c.rotate(rot + wobble * 0.06);
       c.scale(scl, scl * ringStretch);
@@ -493,69 +535,36 @@ class MCircle {
       for (let i = 0; i < rings; i++) {
         const r = this.ringRadii[i];
         if (r < 2) continue;
-        const colA = normalizeHex(ringColors[i % ringColors.length]);
-        const colB = normalizeHex(ringColors[(i + 2) % ringColors.length]);
+        const fillCol = normalizeHex(ringColors[i % ringColors.length]);
+        const strokeCol =
+          this.whiteAccentMode === "ring" && i === this.whiteRingIndex
+            ? "#ffffff"
+            : normalizeHex(this.ringStrokeColors[i % this.ringStrokeColors.length]);
 
         c.beginPath();
         c.arc(0, 0, r, 0, Math.PI * 2);
-        if (i < rings - 1) {
-          const grd = c.createRadialGradient(0, 0, 0, 0, 0, r);
-          grd.addColorStop(0, withAlpha(colB, 0.85));
-          grd.addColorStop(0.5, colA);
-          grd.addColorStop(1, withAlpha(colA, 0.55));
-          c.fillStyle = grd;
-          c.fill();
-        } else {
-          c.fillStyle = withAlpha(colA, 0.35);
+        // 가장 바깥 원만 채우기 — 나머지는 선만 (채우기는 지정색, 선은 살짝 섞인 색)
+        if (i === 0) {
+          c.fillStyle = fillCol;
           c.fill();
         }
-        c.strokeStyle = colA;
+        c.strokeStyle = strokeCol;
         c.lineWidth = this.ringWidths[i];
         c.stroke();
       }
 
       c.beginPath();
       c.arc(0, 0, this.centerR, 0, Math.PI * 2);
-      c.fillStyle = pulse > 0.15 ? ringColors[0] : ringColors[1] || ringColors[0];
+      c.fillStyle =
+        this.whiteAccentMode === "center"
+          ? "#ffffff"
+          : ringColors[1] || ringColors[0];
       c.fill();
       c.restore();
     } catch {
       c.restore();
       this.done = true;
     }
-  }
-}
-
-class Trail {
-  constructor(x1, y1, x2, y2, col) {
-    this.x1 = x1;
-    this.y1 = y1;
-    this.x2 = x2;
-    this.y2 = y2;
-    this.col = col;
-    this.alpha = rand(0.35, 0.65);
-    this.fade = rand(0.007, 0.011);
-    this.lineWidth = rand(0.8, 1.6);
-    this.done = false;
-  }
-
-  update() {
-    this.alpha -= this.fade;
-    if (this.alpha <= 0) this.done = true;
-  }
-
-  draw(c) {
-    c.save();
-    c.globalAlpha = this.alpha;
-    c.beginPath();
-    c.moveTo(this.x1, this.y1);
-    c.lineTo(this.x2, this.y2);
-    c.strokeStyle = this.col;
-    c.lineWidth = this.lineWidth;
-    c.setLineDash([4, 8]);
-    c.stroke();
-    c.setLineDash([]);
-    c.restore();
   }
 }
 
@@ -566,7 +575,6 @@ function drawBg(c, bgColor) {
 export default function BeatCircleVisualizer() {
   const canvasRef = useRef(null);
   const circlesRef = useRef([]);
-  const trailsRef = useRef([]);
   const slotsRef = useRef(createSlots());
   const audioCtxRef = useRef(null);
   const masterGainRef = useRef(null);
@@ -661,7 +669,7 @@ export default function BeatCircleVisualizer() {
   }, [drumColors]);
   const [seqRunning, setSeqRunning] = useState(false);
   const [seqCurStep, setSeqCurStep] = useState(-1);
-  const [drumPattern, setDrumPattern] = useState(emptyDrumPattern);
+  const [drumPattern, setDrumPattern] = useState(() => emptyDrumPattern());
   const [flashingKeys, setFlashingKeys] = useState({});
 
   const drumPatternRef = useRef(drumPattern);
@@ -906,30 +914,36 @@ export default function BeatCircleVisualizer() {
     const rings = Math.floor(rand(3, 6));
     if (size < CIRCLE_SIZE_FLOOR) return;
 
-    const ringColors =
-      typeof colorSource === "string"
-        ? buildRingColorsFromBase(colorSource, rings)
-        : buildMixedRingColors(colorSource, rings);
+    const drumBase =
+      DRUM_TRACK_KEYS.includes(slotId) &&
+      (drumColorsRef.current[slotId] || DRUM_TRACKS[slotId].color);
+    let colorSets;
+    if (drumBase) {
+      colorSets = buildRingColorSets(
+        drumBase,
+        rings,
+        drumAccentColors(slotId, drumColorsRef.current)
+      );
+    } else if (typeof colorSource === "string") {
+      colorSets = buildRingColorSets(colorSource, rings, paletteAccentColors(-1));
+    } else {
+      colorSets = buildMixedRingColorSets(colorSource, rings);
+    }
     const mc = new MCircle(
       pos.x,
       pos.y,
       Math.max(size, CIRCLE_MIN_RADIUS),
       rings,
-      ringColors,
-      slotId
+      colorSets.fillColors,
+      slotId,
+      colorSets.strokeColors
     );
     if (pos.tangent) mc.applyPathMotion(pos.tangent);
 
-    if (slot.last && !slot.last.done) {
-      trailsRef.current.push(
-        new Trail(slot.last.x, slot.last.y, mc.x, mc.y, withAlpha(pick(ringColors), 0.67))
-      );
-    }
     const recent = slot.circles.filter((cc) => !cc.done).slice(-2);
     recent.forEach((cc) => cc.trigger());
 
     slot.circles.push(mc);
-    slot.last = mc;
     circlesRef.current.push(mc);
   }, [countActiveCircles, pickSpawnPosition]);
 
@@ -983,7 +997,6 @@ export default function BeatCircleVisualizer() {
 
   const clearAll = useCallback(() => {
     circlesRef.current = [];
-    trailsRef.current = [];
     slotsRef.current = createSlots();
     clearPaths();
     setDrumPattern(emptyDrumPattern());
@@ -1077,11 +1090,6 @@ export default function BeatCircleVisualizer() {
       const now = performance.now();
       updatePersistentPaths(pathsRef.current, now);
       drawUserPaths(ctx, pathsRef.current, activeStrokeRef.current, now);
-      trailsRef.current = trailsRef.current.filter((t) => !t.done);
-      trailsRef.current.forEach((t) => {
-        t.update();
-        t.draw(ctx);
-      });
       circlesRef.current = circlesRef.current.filter((cc) => !cc.done);
       Object.values(slotsRef.current).forEach((sl) => {
         sl.circles = sl.circles.filter((cc) => !cc.done);
@@ -1410,6 +1418,22 @@ export default function BeatCircleVisualizer() {
             }
           />
           <span>{overlayText.fontSize}</span>
+        </label>
+        <label className={styles.fxRow}>
+          <span>가로폭</span>
+          <input
+            type="range"
+            min={35}
+            max={130}
+            value={Math.round((overlayText.scaleX || 1) * 100)}
+            onChange={(e) =>
+              setOverlayText((prev) => ({
+                ...prev,
+                scaleX: Number(e.target.value) / 100,
+              }))
+            }
+          />
+          <span>{Math.round((overlayText.scaleX || 1) * 100)}%</span>
         </label>
         <span className={styles.textHint}>캔버스에서 글자를 드래그해 위치 이동</span>
       </div>
